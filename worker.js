@@ -691,7 +691,12 @@ async function forwardToTopic(msg, userId, key, env, ctx) {
         }
     }
 
-    if (msg.media_group_id) {
+    if (text === "/admin") {
+      await sendAdminPanel(threadId, userId, env, msg.message_id);
+      return;
+  }
+
+  if (msg.media_group_id) {
         await handleMediaGroup(msg, env, ctx, {
             direction: "p2t",
             targetChat: env.SUPERGROUP_ID,
@@ -847,12 +852,17 @@ async function handleAdminReply(msg, env, ctx) {
 
   const key = `user:${userId}`;
 
+  if (text === "/admin") {
+      await sendAdminPanel(threadId, userId, env, msg.message_id);
+      return;
+  }
+
   if (msg.media_group_id) {
     await handleMediaGroup(msg, env, ctx, { direction: "t2p", targetChat: userId, threadId: undefined });
     return;
   }
 
-  await showAdminUserMenu(env.SUPERGROUP_ID, threadId, userId, env);
+  await tgCall(env, "copyMessage", { chat_id: userId, from_chat_id: env.SUPERGROUP_ID, message_id: msg.message_id });
 }
 
 // ---------------- 验证模块 (纯本地) ----------------
@@ -1172,7 +1182,7 @@ async function handleAdminCallback(query, env, ctx) {
                     await tgCall(env, "closeForumTopic", { chat_id: env.SUPERGROUP_ID, message_thread_id: rec.thread_id });
                 }
             }
-            await showAdminUserMenu(chatId, threadId, userId, env, "🚫 对话已强制关闭", messageId);
+            await sendAdminPanel(threadId, userId, env, messageId);
             return;
         }
 
@@ -1187,7 +1197,7 @@ async function handleAdminCallback(query, env, ctx) {
                     await tgCall(env, "reopenForumTopic", { chat_id: env.SUPERGROUP_ID, message_thread_id: rec.thread_id });
                 }
             }
-            await showAdminUserMenu(chatId, threadId, userId, env, "✅ 对话已恢复", messageId);
+            await sendAdminPanel(threadId, userId, env, messageId);
             return;
         }
 
@@ -1198,7 +1208,7 @@ async function handleAdminCallback(query, env, ctx) {
             if (userId) {
                 userDataCache.invalidate(`user:${userId}`);
             }
-            await showAdminUserMenu(chatId, threadId, userId, env, "🔄 验证已重置", messageId);
+            await sendAdminPanel(threadId, userId, env, messageId);
             return;
         }
 
@@ -1206,19 +1216,19 @@ async function handleAdminCallback(query, env, ctx) {
             await env.TOPIC_MAP.put(`verified:${userId}`, "trusted");
             await env.TOPIC_MAP.delete(`needs_verify:${userId}`);
             recentVerifiedCache.set(String(userId), "trusted");
-            await showAdminUserMenu(chatId, threadId, userId, env, "🌟 已设置永久信任", messageId);
+            await sendAdminPanel(threadId, userId, env, messageId);
             return;
         }
 
         if (action === "ban") {
             await env.TOPIC_MAP.put(`banned:${userId}`, "1");
-            await showAdminUserMenu(chatId, threadId, userId, env, "🚫 用户已封禁", messageId);
+            await sendAdminPanel(threadId, userId, env, messageId);
             return;
         }
 
         if (action === "unban") {
             await env.TOPIC_MAP.delete(`banned:${userId}`);
-            await showAdminUserMenu(chatId, threadId, userId, env, "✅ 用户已解封", messageId);
+            await sendAdminPanel(threadId, userId, env, messageId);
             return;
         }
 
@@ -1397,6 +1407,65 @@ async function handleAdminListCommand(text, threadId, env) {
             return;
         }
         await showAdminUserMenu(env.SUPERGROUP_ID, threadId, Number(targetUid), env);
+    }
+}
+
+async function sendAdminPanel(threadId, userId, env, messageId) {
+    const key = `user:${userId}`;
+    const rec = userDataCache.get(key) || await safeGetJSON(env, key, null);
+    const verifyStatus = await env.TOPIC_MAP.get(`verified:${userId}`);
+    const banStatus = await env.TOPIC_MAP.get(`banned:${userId}`);
+
+    const isClosed = rec?.closed || false;
+    const isTrusted = verifyStatus === "trusted";
+    const isBanned = !!banStatus;
+
+    const buttons = [
+        [
+            { text: "👤 查看用户", url: `tg://user?id=${userId}` }
+        ],
+        [
+            { text: isClosed ? "✅ 开启对话" : "🚫 关闭对话",
+              callback_data: `admin:${isClosed ? "open" : "close"}:${userId}` },
+            { text: isBanned ? "✅ 解封" : "🚫 封禁",
+              callback_data: `admin:${isBanned ? "unban" : "ban"}:${userId}` }
+        ],
+        [
+            { text: "🔄 重置验证", callback_data: `admin:reset:${userId}` },
+            { text: isTrusted ? "⏳ 取消信任" : "🌟 信任",
+              callback_data: `admin:trust:${userId}` }
+        ],
+        [
+            { text: "👤 查看详情", callback_data: `admin:info:${userId}` },
+            { text: "🗑 清理无效", callback_data: `admin:cleanup:${userId}` }
+        ]
+    ];
+
+    const text = `🎮 *管理员控制面板*\n\nUID: \`${userId}\`\n状态: ${isBanned ? "🚫 已封禁" : isTrusted ? "🌟 已信任" : "✅ 正常"}\n对话: ${isClosed ? "🚫 已关闭" : "✅ 开启中"}`;
+
+    if (messageId) {
+        await Promise.all([
+            tgCall(env, "sendMessage", {
+                chat_id: env.SUPERGROUP_ID,
+                message_thread_id: threadId,
+                text,
+                parse_mode: "Markdown",
+                reply_markup: { inline_keyboard: buttons }
+            }),
+            tgCall(env, "deleteMessage", {
+                chat_id: env.SUPERGROUP_ID,
+                message_thread_id: threadId,
+                message_id: messageId
+            })
+        ]);
+    } else {
+        await tgCall(env, "sendMessage", {
+            chat_id: env.SUPERGROUP_ID,
+            message_thread_id: threadId,
+            text,
+            parse_mode: "Markdown",
+            reply_markup: { inline_keyboard: buttons }
+        });
     }
 }
 
