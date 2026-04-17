@@ -691,12 +691,7 @@ async function forwardToTopic(msg, userId, key, env, ctx) {
         }
     }
 
-    if (text === "/admin") {
-      await sendAdminPanel(threadId, userId, env, msg.message_id);
-      return;
-  }
-
-  if (msg.media_group_id) {
+    if (msg.media_group_id) {
         await handleMediaGroup(msg, env, ctx, {
             direction: "p2t",
             targetChat: env.SUPERGROUP_ID,
