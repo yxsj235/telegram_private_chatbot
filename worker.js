@@ -847,70 +847,12 @@ async function handleAdminReply(msg, env, ctx) {
 
   const key = `user:${userId}`;
 
-  if (text === "/close") {
-      let rec = userDataCache.get(key) || await safeGetJSON(env, key, null);
-      if (rec) {
-          rec.closed = true;
-          await env.TOPIC_MAP.put(key, JSON.stringify(rec));
-          userDataCache.set(key, rec);
-          await tgCall(env, "closeForumTopic", { chat_id: env.SUPERGROUP_ID, message_thread_id: threadId });
-          await tgCall(env, "sendMessage", { chat_id: env.SUPERGROUP_ID, message_thread_id: threadId, text: "🚫 **对话已强制关闭**", parse_mode: "Markdown" });
-      }
-      return;
-  }
-
-  if (text === "/open") {
-      let rec = userDataCache.get(key) || await safeGetJSON(env, key, null);
-      if (rec) {
-          rec.closed = false;
-          await env.TOPIC_MAP.put(key, JSON.stringify(rec));
-          userDataCache.set(key, rec);
-          await tgCall(env, "reopenForumTopic", { chat_id: env.SUPERGROUP_ID, message_thread_id: threadId });
-          await tgCall(env, "sendMessage", { chat_id: env.SUPERGROUP_ID, message_thread_id: threadId, text: "✅ **对话已恢复**", parse_mode: "Markdown" });
-      }
-      return;
-  }
-
-  if (text === "/reset") {
-      await env.TOPIC_MAP.delete(`verified:${userId}`);
-      recentVerifiedCache.delete(String(userId));
-      verificationStatusCache.invalidate(`verified:${userId}`);
-      userDataCache.invalidate(key);
-      await tgCall(env, "sendMessage", { chat_id: env.SUPERGROUP_ID, message_thread_id: threadId, text: "🔄 **验证重置**", parse_mode: "Markdown" });
-      return;
-  }
-
-  if (text === "/trust") {
-      await env.TOPIC_MAP.put(`verified:${userId}`, "trusted");
-      await env.TOPIC_MAP.delete(`needs_verify:${userId}`);
-      recentVerifiedCache.set(String(userId), "trusted");
-      await tgCall(env, "sendMessage", { chat_id: env.SUPERGROUP_ID, message_thread_id: threadId, text: "🌟 **已设置永久信任**", parse_mode: "Markdown" });
-      return;
-  }
-
-  if (text === "/ban") {
-      await env.TOPIC_MAP.put(`banned:${userId}`, "1");
-      await tgCall(env, "sendMessage", { chat_id: env.SUPERGROUP_ID, message_thread_id: threadId, text: "🚫 **用户已封禁**", parse_mode: "Markdown" });
-      return;
-  }
-
-  if (text === "/unban") {
-      await env.TOPIC_MAP.delete(`banned:${userId}`);
-      await tgCall(env, "sendMessage", { chat_id: env.SUPERGROUP_ID, message_thread_id: threadId, text: "✅ **用户已解封**", parse_mode: "Markdown" });
-      return;
-  }
-
-  if (text === "/info") {
-      await showAdminUserMenu(env.SUPERGROUP_ID, threadId, userId, env);
-      return;
-  }
-
-  // 转发管理员消息给用户
   if (msg.media_group_id) {
     await handleMediaGroup(msg, env, ctx, { direction: "t2p", targetChat: userId, threadId: undefined });
     return;
   }
-  await tgCall(env, "copyMessage", { chat_id: userId, from_chat_id: env.SUPERGROUP_ID, message_id: msg.message_id });
+
+  await showAdminUserMenu(env.SUPERGROUP_ID, threadId, userId, env);
 }
 
 // ---------------- 验证模块 (纯本地) ----------------
