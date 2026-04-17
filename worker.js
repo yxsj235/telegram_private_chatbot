@@ -1156,6 +1156,11 @@ async function handleAdminCallback(query, env, ctx) {
             return;
         }
 
+        if (!userId) {
+            await showAdminUserMenu(chatId, threadId, userId, env, "❌ 无效的用户", messageId);
+            return;
+        }
+
         if (action === "close") {
             const key = `user:${userId}`;
             let rec = userDataCache.get(key) || await safeGetJSON(env, key, null);
@@ -1190,7 +1195,9 @@ async function handleAdminCallback(query, env, ctx) {
             await env.TOPIC_MAP.delete(`verified:${userId}`);
             recentVerifiedCache.delete(String(userId));
             verificationStatusCache.invalidate(`verified:${userId}`);
-            userDataCache.invalidate(`user:${userId}`);
+            if (userId) {
+                userDataCache.invalidate(`user:${userId}`);
+            }
             await showAdminUserMenu(chatId, threadId, userId, env, "🔄 验证已重置", messageId);
             return;
         }
